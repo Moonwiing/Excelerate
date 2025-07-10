@@ -1,211 +1,24 @@
-# Load required libraries for data manipulation, visualization, and modeling
+# ==============================================================================
+# QUESTION 1: Which campaign had the highest reach?
+# ==============================================================================
+
+# Load required libraries (as per your request)
 library(readxl)      # For reading Excel files
 library(dplyr)       # For data manipulation
-library(plotly)      # For interactive visualizations
-library(viridis)     # For beautiful, colorblind-friendly color palettes
-library(htmlwidgets) # For saving interactive plots as HTML
-library(randomForest)# For feature importance analysis
+library(ggplot2)     # For visualizations
+library(scales)      # For formatting axis labels
 
-# Read the Excel data (assuming the file is named 'Book1.xlsx')
-# Replace 'path/to/Book1.xlsx' with the actual file path if needed
+# Read the Excel data (replace with your actual file path)
 data <- read_excel("Book1.xlsx", sheet = "Sheet1")
 
-# Clean column names to remove spaces and special characters for easier handling
+# Clean column names (as per your code)
 colnames(data) <- c("Campaign_ID", "Campaign_Name", "Audience", "Age", "Geography", 
                     "Reach", "Impressions", "Frequency", "Clicks", "Unique_Clicks", 
                     "Unique_Link_Clicks", "CTR", "Unique_CTR", "Amount_Spent_INR", 
                     "CPC", "CPR", "Dropdown1", "Dropdown2")
-
-# Remove unnecessary dropdown columns
 data <- data %>% select(-Dropdown1, -Dropdown2)
 
-# Separate data into individual countries and groups
-# Individual countries dataset: Exclude Group 1 and Group 2
-individual_data <- data %>% 
-  filter(!Geography %in% c("Group 1 (Australia, Canada, United Kingdom, Ghana, Nigeria, Pakistan, United States)", 
-                           "Group 2 (Australia, Canada, United Kingdom, Ghana, Niger, Nigeria, Nepal, Pakistan, Thailand, Taiwan)"))
-
-# Group dataset: Include only Group 1 and Group 2
-group_data <- data %>% 
-  filter(Geography %in% c("Group 1 (Australia, Canada, United Kingdom, Ghana, Nigeria, Pakistan, United States)", 
-                          "Group 2 (Australia, Canada, United Kingdom, Ghana, Niger, Nigeria, Nepal, Pakistan, Thailand, Taiwan)"))
-
-# Save group data to a separate CSV for reference
-write.csv(group_data, "group_data.csv", row.names = FALSE)
-
-# Define a color palette using viridis for vibrant, colorblind-friendly colors
-color_palette <- viridis::viridis(10, option = "D")
-
-# --- Feature Importance Analysis ---
-# Purpose: Identify key predictors of CTR using a random forest model
-# Prepare data for random forest: Convert categorical variables to factors
-rf_data <- individual_data %>% 
-  select(Audience, Age, Geography, Reach, Impressions, Frequency, Amount_Spent_INR, CTR) %>%
-  mutate(Audience = as.factor(Audience),
-         Age = as.factor(Age),
-         Geography = as.factor(Geography))
-
-# Train random forest model to predict CTR
-set.seed(123) # For reproducibility
-rf_model <- randomForest(CTR ~ ., data = rf_data, ntree = 100, importance = TRUE)
-
-# Extract feature importance
-importance_df <- as.data.frame(importance(rf_model, type = 1)) %>%
-  tibble::rownames_to_column(var = "Feature") %>%
-  rename(Importance = `%IncMSE`)
-
-# Visualization 1: Interactive Bar Plot of Feature Importance
-# Purpose: Show which features (Audience, Age, Geography, etc.) most influence CTR
-p1 <- plot_ly(data = importance_df, 
-              x = ~reorder(Feature, Importance), 
-              y = ~Importance, 
-              type = "bar",
-              marker = list(color = color_palette[1]),
-              hoverinfo = "text",
-              text = ~paste("Feature: ", Feature, "<br>",
-                            "Importance: ", round(Importance, 2))) %>%
-  layout(title = "Feature Importance for CTR Prediction",
-         xaxis = list(title = "Feature", tickangle = 45),
-         yaxis = list(title = "Importance (%IncMSE)"),
-         margin = list(b = 150))
-
-# --- Individual Countries Visualizations ---
-
-# Visualization 2: Interactive Violin Plot of CTR by Age and Audience
-# Purpose: Explore CTR distribution across age groups, segmented by audience
-p2 <- plot_ly(data = individual_data, 
-              x = ~Age, 
-              y = ~CTR, 
-              color = ~Audience, 
-              colors = color_palette[2:3], 
-              type = "violin",
-              box = list(visible = TRUE),
-              meanline = list(visible = TRUE),
-              hoverinfo = "text",
-              text = ~paste("Age: ", Age, "<br>",
-                            "Audience: ", Audience, "<br>",
-                            "CTR: ", round(CTR, 2), "%")) %>%
-  layout(title = "CTR Distribution by Age and Audience (Individual Countries)",
-         xaxis = list(title = "Age Group"),
-         yaxis = list(title = "Click-Through Rate (%)"),
-         legend = list(title = list(text = "Audience")))
-
-# Visualization 3: Interactive Stacked Bar Plot of Clicks by Audience and Geography
-# Purpose: Compare total clicks across audiences for each country
-click_geo_data <- individual_data %>% 
-  group_by(Geography, Audience) %>% 
-  summarise(Total_Clicks = sum(Clicks), .groups = "drop")
-p3 <- plot_ly(data = click_geo_data, 
-              x = ~Geography, 
-              y = ~Total_Clicks, 
-              color = ~Audience, 
-              colors = color_palette[4:5], 
-              type = "bar",
-              hoverinfo = "text",
-              text = ~paste("Country: ", Geography, "<br>",
-                            "Audience: ", Audience, "<br>",
-                            "Clicks: ", Total_Clicks)) %>%
-  layout(title = "Total Clicks by Audience and Country",
-         xaxis = list(title = "Country", tickangle = 45),
-         yaxis = list(title = "Total Clicks"),
-         barmode = "stack",
-         legend = list(title = list(text = "Audience")),
-         margin = list(b = 150))
-
-# Visualization 4: Interactive Scatter Plot of Reach vs. Impressions
-# Purpose: Explore relationship between Reach and Impressions, colored by Audience
-p4 <- plot_ly(data = individual_data, 
-              x = ~Reach, 
-              y = ~Impressions, 
-              color = ~Audience, 
-              colors = color_palette[6:7], 
-              type = "scatter", 
-              mode = "markers",
-              hoverinfo = "text",
-              text = ~paste("Country: ", Geography, "<br>",
-                            "Audience: ", Audience, "<br>",
-                            "Reach: ", Reach, "<br>",
-                            "Impressions: ", Impressions)) %>%
-  layout(title = "Reach vs. Impressions by Audience (Individual Countries)",
-         xaxis = list(title = "Reach"),
-         yaxis = list(title = "Impressions"),
-         legend = list(title = list(text = "Audience")))
-
-# --- Group Data Visualizations ---
-
-# Visualization 5: Interactive Bar Plot of Reach by Group and Audience
-# Purpose: Compare Reach for Group 1 and Group 2, colored by audience
-p5 <- plot_ly(data = group_data, 
-              x = ~Geography, 
-              y = ~Reach, 
-              color = ~Audience, 
-              colors = color_palette[8:9], 
-              type = "bar",
-              hoverinfo = "text",
-              text = ~paste("Group: ", Geography, "<br>",
-                            "Audience: ", Audience, "<br>",
-                            "Reach: ", Reach)) %>%
-  layout(title = "Reach by Group and Audience",
-         xaxis = list(title = "Group"),
-         yaxis = list(title = "Reach (Unique Views)"),
-         barmode = "group",
-         legend = list(title = list(text = "Audience")))
-
-# Visualization 6: Interactive Bar Plot of CTR by Group and Age
-# Purpose: Compare CTR across age groups for Group 1 and Group 2
-p6 <- plot_ly(data = group_data, 
-              x = ~Age, 
-              y = ~CTR, 
-              color = ~Geography, 
-              colors = color_palette[9:10], 
-              type = "bar",
-              hoverinfo = "text",
-              text = ~paste("Group: ", Geography, "<br>",
-                            "Age: ", Age, "<br>",
-                            "CTR: ", round(CTR, 2), "%")) %>%
-  layout(title = "CTR by Age and Group",
-         xaxis = list(title = "Age Group"),
-         yaxis = list(title = "Click-Through Rate (%)"),
-         barmode = "group",
-         legend = list(title = list(text = "Group")))
-
-# Combine all plots into a single HTML file using subplot
-combined_plot <- subplot(p1, p2, p3, p4, p5, p6, 
-                         nrows = 3, 
-                         titleX = TRUE, 
-                         titleY = TRUE, 
-                         margin = 0.05)
-
-# Apply a consistent layout for better appearance
-combined_plot <- combined_plot %>% 
-  layout(title = list(text = "Interactive Facebook Ad Campaign Analysis", 
-                      x = 0.5, 
-                      font = list(size = 20, color = "#333333")),
-         margin = list(t = 100, b = 100))
-
-# Save the interactive visualizations as an HTML file
-saveWidget(combined_plot, "facebook_ad_interactive_analysis.html", selfcontained = TRUE)
-
-# Load required libraries for data manipulation and modeling
-library(readxl)      # For reading Excel files
-library(dplyr)       # For data manipulation
-library(randomForest)# For feature importance
-library(broom)       # For tidy regression output
-
-# Read the Excel data (assuming the file is named 'Book1.xlsx')
-# Replace 'path/to/Book1.xlsx' with the actual file path if needed
-data <- read_excel("Book1.xlsx", sheet = "Sheet1")
-
-# Clean column names to match previous program
-colnames(data) <- c("Campaign_ID", "Campaign_Name", "Audience", "Age", "Geography", 
-                    "Reach", "Impressions", "Frequency", "Clicks", "Unique_Clicks", 
-                    "Unique_Link_Clicks", "CTR", "Unique_CTR", "Amount_Spent_INR", 
-                    "CPC", "CPR", "Dropdown1", "Dropdown2")
-
-# Remove unnecessary dropdown columns
-data <- data %>% select(-Dropdown1, -Dropdown2)
-
-# Separate data into individual countries and groups
+# Separate individual countries and groups (as per your code)
 individual_data <- data %>% 
   filter(!Geography %in% c("Group 1 (Australia, Canada, United Kingdom, Ghana, Nigeria, Pakistan, United States)", 
                            "Group 2 (Australia, Canada, United Kingdom, Ghana, Niger, Nigeria, Nepal, Pakistan, Thailand, Taiwan)"))
@@ -213,78 +26,334 @@ group_data <- data %>%
   filter(Geography %in% c("Group 1 (Australia, Canada, United Kingdom, Ghana, Nigeria, Pakistan, United States)", 
                           "Group 2 (Australia, Canada, United Kingdom, Ghana, Niger, Nigeria, Nepal, Pakistan, Thailand, Taiwan)"))
 
-# --- p1: Feature Importance for CTR Prediction ---
-# Train random forest model for feature importance
-rf_data <- individual_data %>% 
-  select(Audience, Age, Geography, Reach, Impressions, Frequency, Amount_Spent_INR, CTR) %>%
-  mutate(Audience = as.factor(Audience), Age = as.factor(Age), Geography = as.factor(Geography))
-set.seed(123)
-rf_model <- randomForest(CTR ~ ., data = rf_data, ntree = 100, importance = TRUE)
-importance_df <- as.data.frame(importance(rf_model, type = 1)) %>%
-  tibble::rownames_to_column(var = "Feature") %>%
-  rename(Importance = `%IncMSE`) %>%
-  mutate(Plot = "p1", Metric = "Importance (%IncMSE)")
+# ------------------------------------------------------------------------------
+# ANSWER TO Q1: Campaign with highest reach
+# ------------------------------------------------------------------------------
 
-# --- p2: CTR Distribution by Age and Audience ---
-p2_data <- individual_data %>% 
-  group_by(Age, Audience) %>% 
-  summarise(Mean_CTR = mean(CTR, na.rm = TRUE),
-            Median_CTR = median(CTR, na.rm = TRUE), .groups = "drop") %>%
-  mutate(Plot = "p2", Metric = "Mean and Median CTR (%)")
+# Calculate total reach per campaign
+reach_summary <- data %>%
+  group_by(Campaign_ID, Campaign_Name) %>%
+  summarise(Total_Reach = sum(Reach), .groups = "drop") %>%
+  arrange(desc(Total_Reach))
 
-# --- p3: Total Clicks by Audience and Country ---
-p3_data <- individual_data %>% 
-  group_by(Geography, Audience) %>% 
-  summarise(Total_Clicks = sum(Clicks, na.rm = TRUE), .groups = "drop") %>%
-  mutate(Plot = "p3", Metric = "Total Clicks")
+# Visualization
+ggplot(reach_summary, aes(x = reorder(Campaign_Name, Total_Reach), y = Total_Reach, fill = Campaign_ID)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  geom_text(aes(label = comma(Total_Reach)), hjust = -0.1, size = 3.5) +
+  coord_flip() +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "Q1: Campaigns by Total Reach",
+    x = NULL,
+    y = "Total Reach",
+    fill = "Campaign ID"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "none"
+  )
 
-# --- p4: Reach vs. Impressions by Audience ---
-# Fit linear regression to estimate y-intercept
-lm_model <- lm(Impressions ~ Reach, data = individual_data)
-lm_summary <- tidy(lm_model) %>%
-  filter(term == "(Intercept)") %>%
-  select(estimate) %>%
-  mutate(Plot = "p4", Metric = "Y-Intercept (Impressions)", Feature = "Intercept") %>%
-  rename(Value = estimate)
-p4_summary <- individual_data %>% 
-  summarise(Min_Reach = min(Reach), Max_Reach = max(Reach),
-            Min_Impressions = min(Impressions), Max_Impressions = max(Impressions)) %>%
-  mutate(Plot = "p4", Metric = "Range", Feature = "Reach/Impressions") %>%
-  tidyr::pivot_longer(cols = c(Min_Reach, Max_Reach, Min_Impressions, Max_Impressions),
-                      names_to = "Sub_Metric", values_to = "Value")
-p4_data <- bind_rows(lm_summary, p4_summary)
+# Save the plot
+ggsave("Q1_Campaign_Reach.png", width = 8, height = 5, dpi = 300)
 
-# --- p5: Reach by Group and Audience ---
-p5_data <- group_data %>% 
-  group_by(Geography, Audience) %>% 
-  summarise(Total_Reach = sum(Reach, na.rm = TRUE), .groups = "drop") %>%
-  mutate(Plot = "p5", Metric = "Total Reach")
 
-# --- p6: CTR by Age and Group ---
-p6_data <- group_data %>% 
-  group_by(Age, Geography) %>% 
-  summarise(Mean_CTR = mean(CTR, na.rm = TRUE), .groups = "drop") %>%
-  mutate(Plot = "p6", Metric = "Mean CTR (%)")
+# ------------------------------------------------------------------------------
+# QUESTION 2: Impressions by audience type
+# ------------------------------------------------------------------------------
+impressions_by_audience <- data %>%
+  group_by(Audience) %>%
+  summarise(Total_Impressions = sum(Impressions), .groups = "drop")
 
-# Combine all outputs into a single data frame
-output_summary <- bind_rows(
-  importance_df %>% select(Plot, Metric, Feature, Importance) %>% 
-    rename(Value = Importance),
-  p2_data %>% select(Plot, Metric, Age, Audience, Mean_CTR, Median_CTR) %>% 
-    tidyr::pivot_longer(cols = c(Mean_CTR, Median_CTR), names_to = "Sub_Metric", values_to = "Value") %>%
-    mutate(Feature = paste(Age, Audience, sep = "_")),
-  p3_data %>% select(Plot, Metric, Geography, Audience, Total_Clicks) %>% 
-    rename(Value = Total_Clicks) %>% mutate(Feature = paste(Geography, Audience, sep = "_")),
-  p4_data %>% select(Plot, Metric, Feature, Value),
-  p5_data %>% select(Plot, Metric, Geography, Audience, Total_Reach) %>% 
-    rename(Value = Total_Reach) %>% mutate(Feature = paste(Geography, Audience, sep = "_")),
-  p6_data %>% select(Plot, Metric, Age, Geography, Mean_CTR) %>% 
-    rename(Value = Mean_CTR) %>% mutate(Feature = paste(Age, Geography, sep = "_"))
-)
+ggplot(impressions_by_audience, 
+       aes(x = Audience, y = Total_Impressions, fill = Audience)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = comma(Total_Impressions)), 
+            vjust = -0.5, size = 3.5) +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+  labs(title = "Q2: Total Impressions by Audience Type",
+       x = NULL,
+       y = "Total Impressions") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
 
-# Print the summary
-print("Summary of Plot Outputs:")
-print(output_summary)
+ggsave("Q2_Impressions_by_Audience.png", width = 6, height = 5, dpi = 300)
 
-# Save the summary as a CSV
-write.csv(output_summary, "facebook_ad_plots_outputs.csv", row.names = FALSE)
+
+# ------------------------------------------------------------------------------
+# QUESTION 3: Frequency vs. engagement
+# ------------------------------------------------------------------------------
+ggplot(data, 
+       aes(x = Frequency, y = Clicks, color = Audience, size = Reach)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.5) +
+  scale_size_continuous(range = c(2, 8), guide = "none") +
+  labs(title = "Q3: Frequency vs. Clicks",
+       x = "Frequency (Impressions/Reach)",
+       y = "Total Clicks",
+       color = "Audience") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+ggsave("Q3_Frequency_vs_Clicks.png", width = 7, height = 5, dpi = 300)
+
+# ------------------------------------------------------------------------------
+# QUESTION 4: Campaign CTR comparison
+# ------------------------------------------------------------------------------
+ctr_summary <- data %>%
+  group_by(Campaign_ID) %>%
+  summarise(Avg_CTR = mean(CTR), .groups = "drop") %>%
+  arrange(desc(Avg_CTR))
+
+ggplot(ctr_summary, 
+       aes(x = reorder(Campaign_ID, Avg_CTR), y = Avg_CTR, fill = Avg_CTR)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  geom_text(aes(label = percent(Avg_CTR, accuracy = 0.1)), 
+            hjust = -0.1, size = 3) +
+  coord_flip() +
+  scale_fill_gradient(low = "#ff6b6b", high = "#51cf66", guide = "none") +
+  scale_y_continuous(labels = percent_format(), expand = expansion(mult = c(0, 0.1))) +
+  labs(title = "Q4: Average CTR by Campaign",
+       x = NULL,
+       y = "Click-Through Rate") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+ggsave("Q4_CTR_by_Campaign.png", width = 7, height = 5, dpi = 300)
+
+# Q5: Unique CTR vs. Regular CTR
+ggplot(data, aes(x = CTR, y = Unique_CTR, color = Audience)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_abline(linetype = "dashed", color = "gray50") +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Q5: Unique CTR vs Regular CTR Comparison",
+       x = "Click-Through Rate (CTR)",
+       y = "Unique CTR",
+       color = "Audience") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q5_CTR_Comparison.png", width = 7, height = 5, dpi = 300)
+
+
+# Q6: Age engagement (Students)
+data %>%
+  filter(Audience == "Students") %>%
+  group_by(Age) %>%
+  summarise(Avg_Clicks = mean(Clicks), .groups = "drop") %>%
+  ggplot(aes(x = Age, y = Avg_Clicks, fill = Age)) +
+  geom_col(width = 0.7) +
+  labs(title = "Q6: Average Clicks by Age Group (Students)",
+       x = "Age Group",
+       y = "Average Clicks") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q6_Age_Clicks_Students.png", width = 6, height = 5, dpi = 300)
+
+# Q7: Clicks by audience
+data %>%
+  group_by(Audience) %>%
+  summarise(Total_Clicks = sum(Clicks), .groups = "drop") %>%
+  ggplot(aes(x = Audience, y = Total_Clicks, fill = Audience)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = comma(Total_Clicks)), vjust = -0.5, size = 3.5) +
+  labs(title = "Q7: Total Clicks by Audience Type",
+       x = NULL,
+       y = "Total Clicks") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q7_Clicks_by_Audience.png", width = 6, height = 5, dpi = 300)
+
+# Q8: Geography performance
+data %>%
+  mutate(Geography = ifelse(str_detect(Geography, "Group"), 
+                            str_extract(Geography, "Group [12]"), 
+                            Geography)) %>%
+  group_by(Geography) %>%
+  summarise(Total_ULC = sum(Unique_Link_Clicks), .groups = "drop") %>%
+  ggplot(aes(x = reorder(Geography, Total_ULC), y = Total_ULC, fill = Geography)) +
+  geom_col(width = 0.7) +
+  coord_flip() +
+  labs(title = "Q8: Unique Link Clicks by Geography",
+       x = NULL,
+       y = "Unique Link Clicks") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q8_Geography_Performance.png", width = 7, height = 5, dpi = 300)
+
+# Q9: Group comparison
+data %>%
+  filter(str_detect(Geography, "Group")) %>%
+  mutate(Group = str_extract(Geography, "Group [12]")) %>%
+  group_by(Group) %>%
+  summarise(Avg_CTR = mean(CTR), .groups = "drop") %>%
+  ggplot(aes(x = Group, y = Avg_CTR, fill = Group)) +
+  geom_col(width = 0.5) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Q9: Average CTR by Geography Group",
+       x = NULL,
+       y = "Click-Through Rate") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q9_Group_Comparison.png", width = 6, height = 5, dpi = 300)
+
+# Q10: Age group engagement
+data %>%
+  mutate(Age_Group = ifelse(Age %in% c("13-17", "18-24"), "Young (13-24)", "Older (25-64)")) %>%
+  group_by(Age_Group) %>%
+  summarise(Avg_Clicks = mean(Clicks), .groups = "drop") %>%
+  ggplot(aes(x = Age_Group, y = Avg_Clicks, fill = Age_Group)) +
+  geom_col(width = 0.5) +
+  labs(title = "Q10: Average Clicks by Age Group",
+       x = NULL,
+       y = "Average Clicks") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q10_Age_Group_Engagement.png", width = 6, height = 5, dpi = 300)
+
+# Q11: CPC by campaign
+data %>%
+  group_by(Campaign_ID) %>%
+  summarise(Avg_CPC = mean(CPC), .groups = "drop") %>%
+  arrange(Avg_CPC) %>%
+  ggplot(aes(x = reorder(Campaign_ID, -Avg_CPC), y = Avg_CPC, fill = Avg_CPC)) +
+  geom_col(width = 0.7) +
+  scale_fill_gradient(low = "#51cf66", high = "#ff6b6b") +
+  coord_flip() +
+  labs(title = "Q11: Average Cost Per Click by Campaign",
+       x = NULL,
+       y = "Cost Per Click (INR)") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q11_CPC_by_Campaign.png", width = 7, height = 5, dpi = 300)
+
+# Q12: CPR by audience
+data %>%
+  group_by(Audience) %>%
+  summarise(Avg_CPR = mean(CPR), .groups = "drop") %>%
+  ggplot(aes(x = Audience, y = Avg_CPR, fill = Audience)) +
+  geom_col(width = 0.6) +
+  labs(title = "Q12: Average Cost Per Result by Audience",
+       x = NULL,
+       y = "Cost Per Result (INR)") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q12_CPR_by_Audience.png", width = 6, height = 5, dpi = 300)
+
+
+# Q13: Spend vs. performance
+ggplot(data, aes(x = Amount_Spent_INR, y = Unique_Link_Clicks)) +
+  geom_point(aes(color = Audience), size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  scale_x_continuous(labels = comma) +
+  labs(title = "Q13: Ad Spend vs. Unique Link Clicks",
+       x = "Amount Spent (INR)",
+       y = "Unique Link Clicks",
+       color = "Audience") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q13_Spend_vs_Performance.png", width = 7, height = 5, dpi = 300)
+
+
+# Q14: ROI by campaign
+data %>%
+  group_by(Campaign_ID) %>%
+  summarise(CPR = mean(CPR), .groups = "drop") %>%
+  arrange(CPR) %>%
+  ggplot(aes(x = reorder(Campaign_ID, -CPR), y = CPR, fill = CPR)) +
+  geom_col(width = 0.7) +
+  scale_fill_gradient(low = "#51cf66", high = "#ff6b6b") +
+  coord_flip() +
+  labs(title = "Q14: Cost Per Result by Campaign (Lower is Better)",
+       x = NULL,
+       y = "Cost Per Result (INR)") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q14_ROI_by_Campaign.png", width = 7, height = 5, dpi = 300)
+
+# Q15: Frequency vs. CTR
+ggplot(data, aes(x = Frequency, y = CTR, color = Audience)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Q15: Frequency Impact on CTR",
+       x = "Frequency",
+       y = "Click-Through Rate",
+       color = "Audience") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q15_Frequency_vs_CTR.png", width = 7, height = 5, dpi = 300)
+
+# Q16: Geography comparison
+data %>%
+  mutate(Region = ifelse(Geography %in% c("USA", "UK", "Canada", "Australia"), 
+                         "Western", "Non-Western")) %>%
+  group_by(Region) %>%
+  summarise(Avg_ULC = mean(Unique_Link_Clicks), .groups = "drop") %>%
+  ggplot(aes(x = Region, y = Avg_ULC, fill = Region)) +
+  geom_col(width = 0.6) +
+  labs(title = "Q16: Unique Link Clicks by Region",
+       x = NULL,
+       y = "Average Unique Link Clicks") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q16_Region_Performance.png", width = 6, height = 5, dpi = 300)
+
+# Q17: CPR by age
+data %>%
+  group_by(Age) %>%
+  summarise(CPR = mean(CPR), .groups = "drop") %>%
+  ggplot(aes(x = reorder(Age, CPR), y = CPR, fill = CPR)) +
+  geom_col(width = 0.7) +
+  scale_fill_gradient(low = "#51cf66", high = "#ff6b6b") +
+  coord_flip() +
+  labs(title = "Q17: Cost Per Result by Age Group",
+       x = NULL,
+       y = "Cost Per Result (INR)") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q17_CPR_by_Age.png", width = 7, height = 5, dpi = 300)
+
+# Q19: Best performing combo
+data %>%
+  group_by(Audience, Age, Geography) %>%
+  summarise(ULC = mean(Unique_Link_Clicks), .groups = "drop") %>%
+  arrange(desc(ULC)) %>%
+  slice_head(n = 5) %>%
+  ggplot(aes(x = reorder(paste(Audience, Age, Geography), y = ULC, fill = Audience)) +
+  geom_col(width = 0.7) +
+  coord_flip() +
+  labs(title = "Q19: Top Audience-Age-Geography Combos",
+       x = NULL,
+       y = "Average Unique Link Clicks") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Q19_Top_Combos.png", width = 9, height = 5, dpi = 300)
+
+# Q20: Underperforming campaigns
+data %>%
+  mutate(CTR_Rank = percent_rank(CTR)) %>%
+  filter(Impressions > median(Impressions), CTR_Rank < 0.3) %>%
+  ggplot(aes(x = reorder(Campaign_ID, CTR), y = CTR, size = Impressions, color = Audience)) +
+  geom_point(alpha = 0.7) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Q20: High-Impression, Low-CTR Campaigns",
+       x = "Campaign",
+       y = "Click-Through Rate",
+       size = "Impressions",
+       color = "Audience") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave("Q20_Underperforming_Campaigns.png", width = 8, height = 5, dpi = 300)
