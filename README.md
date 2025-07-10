@@ -357,3 +357,47 @@ data %>%
   theme(plot.title = element_text(face = "bold", hjust = 0.5),
         axis.text.x = element_text(angle = 45, hjust = 1))
 ggsave("Q20_Underperforming_Campaigns.png", width = 8, height = 5, dpi = 300)
+
+# Total Spend per Campaign
+data %>%
+  group_by(Campaign_ID, Campaign_Name) %>%
+  summarise(Total_Spend = sum(Amount_Spent_INR), .groups = "drop") %>%
+  ggplot(aes(x = reorder(Campaign_Name, Total_Spend), y = Total_Spend, fill = Campaign_ID)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Total Campaign Cost (INR)", x = NULL, y = "Amount Spent") +
+  theme_minimal()
+
+
+data %>%
+  filter(str_detect(Geography, "Group")) %>%
+  mutate(Group = str_extract(Geography, "Group [12]")) %>%
+  ggplot(aes(x = Frequency, y = CTR, size = Reach, color = Group)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "CTR vs Frequency by Group", x = "Frequency", y = "CTR") +
+  theme_minimal()
+
+
+data %>%
+  group_by(Campaign_Name, Age) %>%
+  summarise(Total_Reach = sum(Reach), .groups = "drop") %>%
+  ggplot(aes(x = Age, y = Total_Reach, fill = Age)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~Campaign_Name) +
+  labs(title = "Reach by Campaign and Age Group", x = "Age", y = "Total Reach") +
+  theme_minimal()
+
+
+data %>%
+  filter(Campaign_Name == "Campaign A") %>%
+  group_by(Age) %>%
+  summarise(Avg_CTR = mean(CTR), .groups = "drop") %>%
+  ggplot(aes(x = Age, y = Avg_CTR, fill = Age)) +
+  geom_col(width = 0.7) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(title = "CTR by Age Group for Campaign A", x = "Age", y = "CTR") +
+  theme_minimal()
+
