@@ -7,6 +7,7 @@ library(readxl)      # For reading Excel files
 library(dplyr)       # For data manipulation
 library(ggplot2)     # For visualizations
 library(scales)      # For formatting axis labels
+library(stringr)     # For string manipulation
 
 # Read the Excel data (replace with your actual file path)
 data <- read_excel("Book1.xlsx", sheet = "Sheet1")
@@ -167,16 +168,20 @@ data %>%
         plot.title = element_text(face = "bold", hjust = 0.5))
 ggsave("Q7_Clicks_by_Audience.png", width = 6, height = 5, dpi = 300)
 
-# Q8: Geography performance
+# Q8: Geography performance - FIXED VERSION
 data %>%
-  mutate(Geography = ifelse(str_detect(Geography, "Group"), 
-                            str_extract(Geography, "Group [12]"), 
-                            Geography)) %>%
+  mutate(Geography = case_when(
+    str_detect(Geography, "Group 1") ~ "Group 1",
+    str_detect(Geography, "Group 2") ~ "Group 2",
+    TRUE ~ Geography
+  )) %>%
   group_by(Geography) %>%
   summarise(Total_ULC = sum(Unique_Link_Clicks), .groups = "drop") %>%
   ggplot(aes(x = reorder(Geography, Total_ULC), y = Total_ULC, fill = Geography)) +
   geom_col(width = 0.7) +
+  geom_text(aes(label = comma(Total_ULC)), hjust = -0.1, size = 3.5) +
   coord_flip() +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
   labs(title = "Q8: Unique Link Clicks by Geography",
        x = NULL,
        y = "Unique Link Clicks") +
@@ -325,21 +330,6 @@ data %>%
         plot.title = element_text(face = "bold", hjust = 0.5))
 ggsave("Q17_CPR_by_Age.png", width = 7, height = 5, dpi = 300)
 
-# Q19: Best performing combo
-data %>%
-  group_by(Audience, Age, Geography) %>%
-  summarise(ULC = mean(Unique_Link_Clicks), .groups = "drop") %>%
-  arrange(desc(ULC)) %>%
-  slice_head(n = 5) %>%
-  ggplot(aes(x = reorder(paste(Audience, Age, Geography), y = ULC, fill = Audience)) +
-  geom_col(width = 0.7) +
-  coord_flip() +
-  labs(title = "Q19: Top Audience-Age-Geography Combos",
-       x = NULL,
-       y = "Average Unique Link Clicks") +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold", hjust = 0.5))
-ggsave("Q19_Top_Combos.png", width = 9, height = 5, dpi = 300)
 
 # Q20: Underperforming campaigns
 data %>%
@@ -358,6 +348,7 @@ data %>%
         axis.text.x = element_text(angle = 45, hjust = 1))
 ggsave("Q20_Underperforming_Campaigns.png", width = 8, height = 5, dpi = 300)
 
+
 # Total Spend per Campaign
 data %>%
   group_by(Campaign_ID, Campaign_Name) %>%
@@ -368,8 +359,10 @@ data %>%
   scale_y_continuous(labels = scales::comma) +
   labs(title = "Total Campaign Cost (INR)", x = NULL, y = "Amount Spent") +
   theme_minimal()
+ggsave("Q_Total_Spend_Campaign.png", width = 8, height = 5, dpi = 300)
 
 
+# CTR vs Frequency by Group
 data %>%
   filter(str_detect(Geography, "Group")) %>%
   mutate(Group = str_extract(Geography, "Group [12]")) %>%
@@ -379,8 +372,10 @@ data %>%
   scale_y_continuous(labels = scales::percent) +
   labs(title = "CTR vs Frequency by Group", x = "Frequency", y = "CTR") +
   theme_minimal()
+ggsave("Q_CTR_vs_Frequency_by_Group.png", width = 7, height = 5, dpi = 300)
 
 
+# Reach by Campaign and Age Group
 data %>%
   group_by(Campaign_Name, Age) %>%
   summarise(Total_Reach = sum(Reach), .groups = "drop") %>%
@@ -389,15 +384,367 @@ data %>%
   facet_wrap(~Campaign_Name) +
   labs(title = "Reach by Campaign and Age Group", x = "Age", y = "Total Reach") +
   theme_minimal()
+ggsave("Q_Reach_by_Campaign_and_Age.png", width = 10, height = 6, dpi = 300)
 
 
+# Campaign A – CTR by Age
 data %>%
   filter(Campaign_Name == "Campaign A") %>%
   group_by(Age) %>%
   summarise(Avg_CTR = mean(CTR), .groups = "drop") %>%
   ggplot(aes(x = Age, y = Avg_CTR, fill = Age)) +
   geom_col(width = 0.7) +
-  scale_y_continuous(labels = percent_format()) +
+  scale_y_continuous(labels = scales::percent_format()) +
   labs(title = "CTR by Age Group for Campaign A", x = "Age", y = "CTR") +
   theme_minimal()
+ggsave("Q_CampaignA_CTR_by_Age.png", width = 7, height = 5, dpi = 300)
 
+ 
+# Load required libraries
+library(readxl)      # For reading Excel files
+library(dplyr)       # For data manipulation
+library(ggplot2)     # For visualizations
+library(scales)      # For formatting axis labels
+
+# Read the Excel data (replace with your actual file path)
+data <- read_excel("Book1.xlsx", sheet = "Sheet1")
+
+# Clean column names
+colnames(data) <- c("Campaign_ID", "Campaign_Name", "Audience", "Age", "Geography", 
+                    "Reach", "Impressions", "Frequency", "Clicks", "Unique_Clicks", 
+                    "Unique_Link_Clicks", "CTR", "Unique_CTR", "Amount_Spent_INR", 
+                    "CPC", "CPR", "Dropdown1", "Dropdown2")
+data <- data %>% select(-Dropdown1, -Dropdown2)
+
+# ------------------------------------------------------------------------------
+# Summarize cost and click metrics
+# ------------------------------------------------------------------------------
+cost_click_summary <- data %>%
+  group_by(Campaign_ID, Campaign_Name) %>%
+  summarise(
+    Total_Clicks = sum(Clicks),
+    Total_ULC = sum(Unique_Link_Clicks),
+    Avg_CPC = mean(CPC),
+    Avg_CPR = mean(CPR),
+    Total_Spend = sum(Amount_Spent_INR),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    CPC_Rank = percent_rank(-Avg_CPC), # Lower CPC is better
+    CPR_Rank = percent_rank(-Avg_CPR), # Lower CPR is better
+    Clicks_Rank = percent_rank(Total_Clicks), # Higher clicks is better
+    ULC_Rank = percent_rank(Total_ULC), # Higher ULC is better
+    Performance_Score = (CPC_Rank + CPR_Rank + Clicks_Rank + ULC_Rank) / 4 # Average rank
+  ) %>%
+  arrange(Performance_Score) # Sort by performance score (lower is worse)
+
+# Display the summary table
+print(cost_click_summary, width = Inf)
+
+# Save the summary to a CSV file
+write.csv(cost_click_summary, "Cost_Clicks_Summary.csv", row.names = FALSE)
+
+# ------------------------------------------------------------------------------
+# Plot 1: CPC and CPR by Campaign
+# ------------------------------------------------------------------------------
+ggplot(cost_click_summary, aes(x = reorder(Campaign_Name, Avg_CPR))) +
+  geom_bar(aes(y = Avg_CPR, fill = Avg_CPR), stat = "identity", width = 0.5) +
+  geom_point(aes(y = Avg_CPC * 10, color = Avg_CPC), size = 3) + # Scale CPC for visibility
+  scale_y_continuous(
+    name = "Avg CPR (INR)",
+    sec.axis = sec_axis(~./10, name = "Avg CPC (INR)", labels = comma)
+  ) +
+  scale_fill_gradient(low = "#51cf66", high = "#ff6b6b") +
+  scale_color_gradient(low = "#51cf66", high = "#ff6b6b") +
+  coord_flip() +
+  labs(title = "Cost Efficiency: CPC and CPR by Campaign", x = NULL) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "none",
+    axis.text.y = element_text(size = 8)
+  )
+ggsave("Cost_Efficiency_CPC_CPR.png", width = 8, height = 5, dpi = 300)
+
+# ------------------------------------------------------------------------------
+# Plot 2: Clicks and ULC vs. Spend
+# ------------------------------------------------------------------------------
+ggplot(cost_click_summary, aes(x = Total_Spend)) +
+  geom_point(aes(y = Total_Clicks, color = "Clicks", size = Total_Clicks), alpha = 0.7) +
+  geom_point(aes(y = Total_ULC * 2, color = "Unique Link Clicks"), size = 3, shape = 17, alpha = 0.7) + # Scale ULC for visibility
+  scale_y_continuous(
+    name = "Total Clicks",
+    sec.axis = sec_axis(~./2, name = "Total Unique Link Clicks", labels = comma)
+  ) +
+  scale_color_manual(values = c("Clicks" = "#51cf66", "Unique Link Clicks" = "#ff6b6b")) +
+  labs(title = "Clicks and ULC vs. Ad Spend by Campaign", x = "Total Spend (INR)", color = "Metric") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+ggsave("Clicks_ULC_vs_Spend.png", width = 8, height = 5, dpi = 300)
+
+# ------------------------------------------------------------------------------
+# Statistical Test for CPR
+# ------------------------------------------------------------------------------
+anova_result_cpr <- aov(CPR ~ Campaign_ID, data = data)
+summary(anova_result_cpr)
+
+# UI Definition
+ui <- dashboardPage(
+  dashboardHeader(title = "Superhero U Campaign Dashboard"),
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Overview", tabName = "overview", icon = icon("dashboard")),
+      menuItem("Campaign Performance", tabName = "campaign", icon = icon("chart-line")),
+      menuItem("Audience Analysis", tabName = "audience", icon = icon("users")),
+      menuItem("Geography Analysis", tabName = "geo", icon = icon("globe")),
+      menuItem("Cost Efficiency", tabName = "cost", icon = icon("money-bill-wave"))
+    )
+  ),
+  dashboardBody(
+    tabItems(
+      # Overview Tab
+      tabItem(tabName = "overview",
+              fluidRow(
+                valueBoxOutput("total_spend"),
+                valueBoxOutput("total_clicks"),
+                valueBoxOutput("avg_ctr")
+              ),
+              fluidRow(
+                box(width = 6, plotlyOutput("reach_plot")),
+                box(width = 6, plotlyOutput("impressions_plot"))
+              )
+      ),
+      
+      # Campaign Performance Tab
+      tabItem(tabName = "campaign",
+              fluidRow(
+                box(width = 12, selectInput("campaign_select", "Select Campaign:", 
+                                            choices = unique(data$Campaign_ID)))
+              ),
+              fluidRow(
+                box(width = 6, plotlyOutput("ctr_comparison")),
+                box(width = 6, plotlyOutput("frequency_plot"))
+              )
+      ),
+      
+      # Audience Analysis Tab
+      tabItem(tabName = "audience",
+              fluidRow(
+                box(width = 6, plotlyOutput("age_clicks")),
+                box(width = 6, plotlyOutput("audience_clicks"))
+              )
+      ),
+      
+      # Geography Analysis Tab
+      tabItem(tabName = "geo",
+              fluidRow(
+                box(width = 6, plotlyOutput("geo_performance")),
+                box(width = 6, plotlyOutput("region_comparison"))
+              )
+      ),
+      
+      # Cost Efficiency Tab
+      tabItem(tabName = "cost",
+              fluidRow(
+                box(width = 6, plotlyOutput("cpc_plot")),
+                box(width = 6, plotlyOutput("cpr_plot"))
+              )
+      )
+    )
+  )
+)
+
+# Server Logic
+server <- function(input, output) {
+  
+  # KPIs
+  output$total_spend <- renderValueBox({
+    total <- sum(data$Amount_Spent_INR)
+    valueBox(
+      paste0("₹", format(round(total), big.mark = ",")),
+      "Total Spend",
+      icon = icon("money-bill-wave"),
+      color = "green"
+    )
+  })
+  
+  output$total_clicks <- renderValueBox({
+    total <- sum(data$Clicks)
+    valueBox(
+      format(total, big.mark = ","),
+      "Total Clicks",
+      icon = icon("mouse-pointer"),
+      color = "blue"
+    )
+  })
+  
+  output$avg_ctr <- renderValueBox({
+    avg_ctr <- mean(data$CTR)
+    valueBox(
+      paste0(round(avg_ctr * 100, 1), "%"),
+      "Average CTR",
+      icon = icon("percent"),
+      color = "purple"
+    )
+  })
+  
+  # Plots
+  output$reach_plot <- renderPlotly({
+    reach_summary <- data %>%
+      group_by(Campaign_ID) %>%
+      summarise(Total_Reach = sum(Reach), .groups = "drop")
+    
+    ggplotly(
+      ggplot(reach_summary, aes(x = reorder(Campaign_ID, Total_Reach), y = Total_Reach,
+                                text = paste("Campaign:", Campaign_ID, "<br>Reach:", Total_Reach))) +
+        geom_bar(stat = "identity", fill = "#3c8dbc") +
+        coord_flip() +
+        labs(title = "Campaign Reach", x = NULL, y = "Total Reach") +
+        theme_minimal()
+    ) %>% layout(hoverlabel = list(bgcolor = "white"))
+  })
+  
+  output$impressions_plot <- renderPlotly({
+    imp_summary <- data %>%
+      group_by(Audience) %>%
+      summarise(Total_Impressions = sum(Impressions), .groups = "drop")
+    
+    ggplotly(
+      ggplot(imp_summary, aes(x = Audience, y = Total_Impressions, fill = Audience,
+                              text = paste("Audience:", Audience, "<br>Impressions:", Total_Impressions))) +
+        geom_bar(stat = "identity") +
+        labs(title = "Impressions by Audience", x = NULL, y = "Total Impressions") +
+        theme_minimal() +
+        theme(legend.position = "none")
+    )
+  })
+  
+  output$ctr_comparison <- renderPlotly({
+    ggplotly(
+      ggplot(data, aes(x = CTR, y = Unique_CTR, color = Audience,
+                       text = paste("Campaign:", Campaign_ID, "<br>CTR:", round(CTR * 100, 1), "%",
+                                    "<br>Unique CTR:", round(Unique_CTR * 100, 1), "%"))) +
+        geom_point(size = 2) +
+        geom_abline(linetype = "dashed", color = "gray") +
+        scale_x_continuous(labels = percent) +
+        scale_y_continuous(labels = percent) +
+        labs(title = "Unique vs Regular CTR", x = "CTR", y = "Unique CTR") +
+        theme_minimal()
+    )
+  })
+  
+  output$frequency_plot <- renderPlotly({
+    ggplotly(
+      ggplot(data, aes(x = Frequency, y = Clicks, color = Audience, size = Reach,
+                       text = paste("Campaign:", Campaign_ID, "<br>Frequency:", round(Frequency, 1),
+                                    "<br>Clicks:", Clicks))) +
+        geom_point(alpha = 0.7) +
+        scale_size_continuous(range = c(2, 8)) +
+        labs(title = "Frequency vs Clicks", x = "Frequency", y = "Clicks") +
+        theme_minimal()
+    )
+  })
+  
+  output$age_clicks <- renderPlotly({
+    student_data <- data %>% filter(Audience == "Students")
+    
+    ggplotly(
+      ggplot(student_data, aes(x = Age, y = Clicks, fill = Age,
+                               text = paste("Age:", Age, "<br>Avg Clicks:", round(Clicks, 0)))) +
+        geom_bar(stat = "summary", fun = "mean") +
+        labs(title = "Student Engagement by Age", x = "Age Group", y = "Average Clicks") +
+        theme_minimal() +
+        theme(legend.position = "none")
+    )
+  })
+  
+  output$audience_clicks <- renderPlotly({
+    ggplotly(
+      data %>%
+        group_by(Audience) %>%
+        summarise(Total_Clicks = sum(Clicks), .groups = "drop") %>%
+        ggplot(aes(x = Audience, y = Total_Clicks, fill = Audience,
+                   text = paste("Audience:", Audience, "<br>Total Clicks:", Total_Clicks))) +
+        geom_bar(stat = "identity") +
+        labs(title = "Total Clicks by Audience", x = NULL, y = "Total Clicks") +
+        theme_minimal() +
+        theme(legend.position = "none")
+    )
+  })
+  
+  output$geo_performance <- renderPlotly({
+    geo_data <- data %>%
+      mutate(Geography = case_when(
+        str_detect(Geography, "Group 1") ~ "Group 1",
+        str_detect(Geography, "Group 2") ~ "Group 2",
+        TRUE ~ Geography
+      ))
+    
+    ggplotly(
+      geo_data %>%
+        group_by(Geography) %>%
+        summarise(Total_ULC = sum(Unique_Link_Clicks), .groups = "drop") %>%
+        ggplot(aes(x = reorder(Geography, Total_ULC), y = Total_ULC, fill = Geography,
+                   text = paste("Geography:", Geography, "<br>ULC:", Total_ULC))) +
+        geom_bar(stat = "identity") +
+        coord_flip() +
+        labs(title = "Unique Link Clicks by Geography", x = NULL, y = "Unique Link Clicks") +
+        theme_minimal() +
+        theme(legend.position = "none")
+    )
+  })
+  
+  output$region_comparison <- renderPlotly({
+    region_data <- data %>%
+      mutate(Region = ifelse(Geography %in% c("USA", "UK", "Canada", "Australia"),
+                             "Western", "Non-Western"))
+    
+    ggplotly(
+      region_data %>%
+        group_by(Region) %>%
+        summarise(Avg_CTR = mean(CTR), .groups = "drop") %>%
+        ggplot(aes(x = Region, y = Avg_CTR, fill = Region,
+                   text = paste("Region:", Region, "<br>CTR:", round(Avg_CTR * 100, 1), "%"))) +
+        geom_bar(stat = "identity") +
+        scale_y_continuous(labels = percent) +
+        labs(title = "CTR by Region", x = NULL, y = "Average CTR") +
+        theme_minimal() +
+        theme(legend.position = "none")
+    )
+  })
+  
+  output$cpc_plot <- renderPlotly({
+    ggplotly(
+      data %>%
+        group_by(Campaign_ID) %>%
+        summarise(Avg_CPC = mean(CPC), .groups = "drop") %>%
+        ggplot(aes(x = reorder(Campaign_ID, Avg_CPC), y = Avg_CPC, fill = Avg_CPC,
+                   text = paste("Campaign:", Campaign_ID, "<br>CPC: ₹", round(Avg_CPC, 2)))) +
+        geom_bar(stat = "identity") +
+        scale_fill_gradient(low = "#51cf66", high = "#ff6b6b") +
+        coord_flip() +
+        labs(title = "Cost Per Click by Campaign", x = NULL, y = "Average CPC (INR)") +
+        theme_minimal() +
+        theme(legend.position = "none")
+    )
+  })
+  
+  output$cpr_plot <- renderPlotly({
+    ggplotly(
+      data %>%
+        group_by(Campaign_ID) %>%
+        summarise(Avg_CPR = mean(CPR), .groups = "drop") %>%
+        ggplot(aes(x = reorder(Campaign_ID, Avg_CPR), y = Avg_CPR, fill = Avg_CPR,
+                   text = paste("Campaign:", Campaign_ID, "<br>CPR: ₹", round(Avg_CPR, 2)))) +
+        geom_bar(stat = "identity") +
+        scale_fill_gradient(low = "#51cf66", high = "#ff6b6b") +
+        coord_flip() +
+        labs(title = "Cost Per Result by Campaign", x = NULL, y = "Average CPR (INR)") +
+        theme_minimal() +
+        theme(legend.position = "none")
+    )
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
