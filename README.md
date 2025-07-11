@@ -748,3 +748,376 @@ server <- function(input, output) {
 
 # Run the application
 shinyApp(ui = ui, server = server)
+
+
+
+library(shiny)
+library(shinydashboard)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(DT)
+library(plotly)
+
+# Read and clean data
+data <- read_excel("Book1.xlsx", sheet = "Sheet1")
+colnames(data) <- c("Campaign_ID", "Campaign_Name", "Audience", "Age", "Geography", 
+                    "Reach", "Impressions", "Frequency", "Clicks", "Unique_Clicks", 
+                    "Unique_Link_Clicks", "CTR", "Unique_CTR", "Amount_Spent_INR", 
+                    "CPC", "CPR", "Dropdown1", "Dropdown2")
+data <- data %>% select(-Dropdown1, -Dropdown2)
+
+# Pre-compute summaries for efficiency
+reach_summary <- data %>%
+  group_by(Campaign_ID, Campaign_Name) %>%
+  summarise(Total_Reach = sum(Reach), .groups = "drop") %>%
+  arrange(desc(Total_Reach))
+
+cost_click_summary <- data %>%
+  group_by(Campaign_ID, Campaign_Name) %>%
+  summarise(
+    Total_Clicks = sum(Clicks),
+    Total_ULC = sum(Unique_Link_Clicks),
+    Avg_CPC = mean(CPC),
+    Avg_CPR = mean(CPR),
+    Total_Spend = sum(Amount_Spent_INR),
+    .groups = "drop"
+  )
+
+# Define UI
+ui <- dashboardPage(
+  skin = "blue",
+  dashboardHeader(title = "Campaign Analytics Dashboard"),
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Campaign Performance", tabName = "campaign", icon = icon("chart-bar")),
+      menuItem("Audience Analysis", tabName = "audience", icon = icon("users")),
+      menuItem("Geographic Insights", tabName = "geography", icon = icon("globe")),
+      menuItem("Data Table", tabName = "data", icon = icon("table"))
+    ),
+    selectInput("campaignFilter", "Select Campaign:", 
+                choices = c("All", unique(data$Campaign_Name)), selected = "All"),
+    selectInput("audienceFilter", "Select Audience:", 
+                choices = c("All", unique(data$Audience)), selected = "All")
+  ),
+  dashboardBody(
+    tabItems(
+      # Campaign Performance Tab
+      tabItem(
+        tabName = "campaign",
+        fluidRow(
+          valueBoxOutput("reachBox", width = 3),
+          valueBoxOutput("ctrBox", width = 3),
+          valueBoxOutput("cpcBox", width = 3),
+          valueBoxOutput("spendBox", width = 3)
+        ),
+        fluidRow(
+          box(
+            title = "Campaigns by Total Reach", status = "primary", solidHeader = TRUE,
+            plotlyOutput("reachPlot"), width = 6,
+            downloadButton("downloadReach", "Download Plot")
+          ),
+          box(
+            title = "CTR by Campaign", status = "primary", solidHeader = TRUE,
+            plotlyOutput("ctrPlot"), width = 6,
+            downloadButton("downloadCTR", "Download Plot")
+          )
+        ),
+        fluidRow(
+          box(
+            title = "Spend vs. Unique Link Clicks", status = "primary", solidHeader = TRUE,
+            plotlyOutput("spendPlot"), width = 12
+          )
+        )
+      ),
+      # Audience Analysis Tab
+      tabItem(
+        tabName = "audience",
+        fluidRow(
+          valueBoxOutput("clicksBox", width = 3),
+          valueBoxOutput("impressionsBox", width = 3),
+          valueBoxOutput("cprBox", width = 3)
+        ),
+        fluidRow(
+          box(
+            title = "Impressions by Audience", status = "primary", solidHeader = TRUE,
+            plotlyOutput("impressionsPlot"), width = 6,
+            downloadButton("downloadImpressions", "Download Plot")
+          ),
+          box(
+            title = "Clicks by Audience", status = "primary", solidHeader = TRUE,
+            plotlyOutput("clicksPlot"), width = 6,
+            downloadButton("downloadClicks", "Download Plot")
+          )
+        )
+      ),
+      # Geographic Insights Tab
+      tabItem(
+        tabName = "geography",
+        fluidRow(
+          box(
+            title = "Unique Link Clicks by Geography", status = "primary", solidHeader = TRUE,
+            plotlyOutput("geoPlot"), width = 6,
+            downloadButton("downloadGeo", "Download Plot")
+          ),
+          box(
+            title = "CTR by Geography Group", status = "primary", solidHeader = TRUE,
+            plotlyOutput("groupPlot"), width = 6,
+            downloadButton("downloadGroup", "Download Plot")
+          )
+        )
+      ),
+      # Data Table Tab
+      tabItem(
+        tabName = "data",
+        fluidRow(
+          box(
+            title = "Campaign Summary Data", status = "primary", solidHeader = TRUE,
+            DTOutput("dataTable"), width = 12,
+            downloadButton("downloadData", "Download CSV")
+          )
+        )
+      )
+    )
+  )
+)
+
+# Define Server
+server <- function(input, output) {
+  
+  # Reactive filtered data
+  filtered_data <- reactive({
+    df <- data
+    if (input$campaignFilter != "All") {
+      df <- df %>% filter(Campaign_Name == input$campaignFilter)
+    }
+    if (input$audienceFilter != "All") {
+      df <- df %>% filter(Audience == input$audienceFilter)
+    }
+    df
+  })
+  
+  # KPIs
+  output$reachBox <- renderValueBox({
+    total_reach <- sum(filtered_data()$Reach)
+    valueBox(format(total_reach, big.mark = ","), "Total Reach", icon = icon("users"), color = "blue")
+  })
+  
+  output$clicksBox <- renderValueBox({
+    total_clicks <- sum(filtered_data()$Clicks)
+    valueBox(format(total_clicks, big.mark = ","), "Total Clicks", icon = icon("mouse-pointer"), color = "green")
+  })
+  
+  output$ctrBox <- renderValueBox({
+    avg_ctr <- mean(filtered_data()$CTR) * 100
+    valueBox(sprintf("%.2f%%", avg_ctr), "Average CTR", icon = icon("percent"), color = "yellow")
+  })
+  
+  output$spendBox <- renderValueBox({
+    total_spend <- sum(filtered_data()$Amount_Spent_INR)
+    valueBox(paste("₹", format(total_spend, big.mark = ",")), "Total Spend", icon = icon("inr"), color = "red")
+  })
+  
+  output$impressionsBox <- renderValueBox({
+    total_impressions <- sum(filtered_data()$Impressions)
+    valueBox(format(total_impressions, big.mark = ","), "Total Impressions", icon = icon("eye"), color = "purple")
+  })
+  
+  output$cpcBox <- renderValueBox({
+    avg_cpc <- mean(filtered_data()$CPC)
+    valueBox(sprintf("₹%.2f", avg_cpc), "Average CPC", icon = icon("money-bill"), color = "orange")
+  })
+  
+  output$cprBox <- renderValueBox({
+    avg_cpr <- mean(filtered_data()$CPR)
+    valueBox(sprintf("₹%.2f", avg_cpr), "Average CPR", icon = icon("money-check"), color = "teal")
+  })
+  
+  # Plot 1: Campaign Reach (Q1)
+  output$reachPlot <- renderPlotly({
+    reach_summary <- filtered_data() %>%
+      group_by(Campaign_ID, Campaign_Name) %>%
+      summarise(Total_Reach = sum(Reach), .groups = "drop") %>%
+      arrange(desc(Total_Reach))
+    
+    p <- ggplot(reach_summary, aes(x = reorder(Campaign_Name, Total_Reach), y = Total_Reach, fill = Campaign_ID)) +
+      geom_bar(stat = "identity", width = 0.8) +
+      geom_text(aes(label = comma(Total_Reach)), hjust = -0.1, size = 3.5) +
+      coord_flip() +
+      scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+      labs(title = "Campaigns by Total Reach", x = NULL, y = "Total Reach", fill = "Campaign ID") +
+      theme_minimal() +
+      theme(plot.title = element_text(face = "bold", hjust = 0.5), legend.position = "none")
+    ggplotly(p)
+  })
+  
+  output$downloadReach <- downloadHandler(
+    filename = "reach_plot.png",
+    content = function(file) {
+      ggsave(file, plot = last_plot(), width = 8, height = 5, dpi = 300)
+    }
+  )
+  
+  # Plot 2: CTR by Campaign (Q4)
+  output$ctrPlot <- renderPlotly({
+    ctr_summary <- filtered_data() %>%
+      group_by(Campaign_ID) %>%
+      summarise(Avg_CTR = mean(CTR), .groups = "drop") %>%
+      arrange(desc(Avg_CTR))
+    
+    p <- ggplot(ctr_summary, aes(x = reorder(Campaign_ID, Avg_CTR), y = Avg_CTR, fill = Avg_CTR)) +
+      geom_bar(stat = "identity", width = 0.7) +
+      geom_text(aes(label = percent(Avg_CTR, accuracy = 0.1)), hjust = -0.1, size = 3) +
+      coord_flip() +
+      scale_fill_gradient(low = "#ff6b6b", high = "#51cf66", guide = "none") +
+      scale_y_continuous(labels = percent_format(), expand = expansion(mult = c(0, 0.1))) +
+      labs(title = "Average CTR by Campaign", x = NULL, y = "Click-Through Rate") +
+      theme_minimal() +
+      theme(plot.title = element_text(face = "bold", hjust = 0.5))
+    ggplotly(p)
+  })
+  
+  output$downloadCTR <- downloadHandler(
+    filename = "ctr_plot.png",
+    content = function(file) {
+      ggsave(file, plot = last_plot(), width = 7, height = 5, dpi = 300)
+    }
+  )
+  
+  # Plot 3: Spend vs. Unique Link Clicks (Q13)
+  output$spendPlot <- renderPlotly({
+    cost_click_summary <- filtered_data() %>%
+      group_by(Campaign_ID, Campaign_Name) %>%
+      summarise(Total_Spend = sum(Amount_Spent_INR), Total_ULC = sum(Unique_Link_Clicks), .groups = "drop")
+    
+    p <- ggplot(cost_click_summary, aes(x = Total_Spend, y = Total_ULC)) +
+      geom_point(aes(color = Campaign_Name), size = 3, alpha = 0.7) +
+      geom_smooth(method = "lm", se = FALSE, color = "red") +
+      scale_x_continuous(labels = comma) +
+      labs(title = "Ad Spend vs. Unique Link Clicks", x = "Total Spend (INR)", y = "Unique Link Clicks", color = "Campaign") +
+      theme_minimal() +
+      theme(plot.title = element_text(face = "bold", hjust = 0.5))
+    ggplotly(p)
+  })
+  
+  output$downloadSpend <- downloadHandler(
+    filename = "spend_plot.png",
+    content = function(file) {
+      ggsave(file, plot = last_plot(), width = 7, height = 5, dpi = 300)
+    }
+  )
+  
+  # Plot 4: Impressions by Audience (Q2)
+  output$impressionsPlot <- renderPlotly({
+    impressions_by_audience <- filtered_data() %>%
+      group_by(Audience) %>%
+      summarise(Total_Impressions = sum(Impressions), .groups = "drop")
+    
+    p <- ggplot(impressions_by_audience, aes(x = Audience, y = Total_Impressions, fill = Audience)) +
+      geom_bar(stat = "identity", width = 0.6) +
+      geom_text(aes(label = comma(Total_Impressions)), vjust = -0.5, size = 3.5) +
+      scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+      labs(title = "Total Impressions by Audience Type", x = NULL, y = "Total Impressions") +
+      theme_minimal() +
+      theme(legend.position = "none", plot.title = element_text(face = "bold", hjust = 0.5))
+    ggplotly(p)
+  })
+  
+  output$downloadImpressions <- downloadHandler(
+    filename = "impressions_plot.png",
+    content = function(file) {
+      ggsave(file, plot = last_plot(), width = 6, height = 5, dpi = 300)
+    }
+  )
+  
+  # Plot 5: Clicks by Audience (Q7)
+  output$clicksPlot <- renderPlotly({
+    clicks_by_audience <- filtered_data() %>%
+      group_by(Audience) %>%
+      summarise(Total_Clicks = sum(Clicks), .groups = "drop")
+    
+    p <- ggplot(clicks_by_audience, aes(x = Audience, y = Total_Clicks, fill = Audience)) +
+      geom_bar(stat = "identity", width = 0.6) +
+      geom_text(aes(label = comma(Total_Clicks)), vjust = -0.5, size = 3.5) +
+      labs(title = "Total Clicks by Audience Type", x = NULL, y = "Total Clicks") +
+      theme_minimal() +
+      theme(legend.position = "none", plot.title = element_text(face = "bold", hjust = 0.5))
+    ggplotly(p)
+  })
+  
+  output$downloadClicks <- downloadHandler(
+    filename = "clicks_plot.png",
+    content = function(file) {
+      ggsave(file, plot = last_plot(), width = 6, height = 5, dpi = 300)
+    }
+  )
+  
+  # Plot 6: Unique Link Clicks by Geography (Q8)
+  output$geoPlot <- renderPlotly({
+    geo_summary <- filtered_data() %>%
+      mutate(Geography = case_when(
+        str_detect(Geography, "Group 1") ~ "Group 1",
+        str_detect(Geography, "Group 2") ~ "Group 2",
+        TRUE ~ Geography
+      )) %>%
+      group_by(Geography) %>%
+      summarise(Total_ULC = sum(Unique_Link_Clicks), .groups = "drop")
+    
+    p <- ggplot(geo_summary, aes(x = reorder(Geography, Total_ULC), y = Total_ULC, fill = Geography)) +
+      geom_bar(stat = "identity", width = 0.7) +
+      geom_text(aes(label = comma(Total_ULC)), hjust = -0.1, size = 3.5) +
+      coord_flip() +
+      scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+      labs(title = "Unique Link Clicks by Geography", x = NULL, y = "Unique Link Clicks") +
+      theme_minimal() +
+      theme(legend.position = "none", plot.title = element_text(face = "bold", hjust = 0.5))
+    ggplotly(p)
+  })
+  
+  output$downloadGeo <- downloadHandler(
+    filename = "geo_plot.png",
+    content = function(file) {
+      ggsave(file, plot = last_plot(), width = 7, height = 5, dpi = 300)
+    }
+  )
+  
+  # Plot 7: CTR by Geography Group (Q9)
+  output$groupPlot <- renderPlotly({
+    group_summary <- filtered_data() %>%
+      filter(str_detect(Geography, "Group")) %>%
+      mutate(Group = str_extract(Geography, "Group [12]")) %>%
+      group_by(Group) %>%
+      summarise(Avg_CTR = mean(CTR), .groups = "drop")
+    
+    p <- ggplot(group_summary, aes(x = Group, y = Avg_CTR, fill = Group)) +
+      geom_bar(stat = "identity", width = 0.5) +
+      scale_y_continuous(labels = percent_format()) +
+      labs(title = "Average CTR by Geography Group", x = NULL, y = "Click-Through Rate") +
+      theme_minimal() +
+      theme(legend.position = "none", plot.title = element_text(face = "bold", hjust = 0.5))
+    ggplotly(p)
+  })
+  
+  output$downloadGroup <- downloadHandler(
+    filename = "group_plot.png",
+    content = function(file) {
+      ggsave(file, plot = last_plot(), width = 6, height = 5, dpi = 300)
+    }
+  )
+  
+  # Data Table
+  output$dataTable <- renderDT({
+    datatable(cost_click_summary, options = list(pageLength = 10, autoWidth = TRUE))
+  })
+  
+  output$downloadData <- downloadHandler(
+    filename = "campaign_summary.csv",
+    content = function(file) {
+      write.csv(cost_click_summary, file, row.names = FALSE)
+    }
+  )
+}
+
+# Run the Shiny App
+shinyApp(ui, server)
